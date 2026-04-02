@@ -19,7 +19,7 @@ const APP_HASHTAG = 'valasztas2026';
 const SIZE = 5;
 const CENTER = Math.floor((SIZE * SIZE) / 2);
 const COUNTER_KEY = 'vb2026_plays';
-const COUNTER_BASE = 12847; // seed – starts from realistic number
+const COUNTER_BASE = 12847;
 const SEEN_KEY = 'vb2026_seen_welcome';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -421,7 +421,7 @@ export default function App() {
           style={{ color: '#CE2939', fontWeight: 700, textDecoration: 'none', fontSize: 11, letterSpacing:0.3 }}
           onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
           onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>
-          🤖 Készítette: GaiaAgent.cc
+          🤖 Készítette: GaiAgent.cc
         </a>
       </footer>
     </div>
