@@ -13,8 +13,8 @@ const BUZZWORDS = [
   "Átláthatóság", "Civil szervezet", "Szankciók", "Miniszterelnök", "Ellenzék"
 ];
 
-const CREATOR_URL = 'https://gaiagent.hu';
-const APP_URL = 'https://valasztasibingo.vercel.app';
+const CREATOR_URL = 'https://gaiagent.cc/';
+const APP_URL = 'https://valasztasibingo.hu';
 const APP_HASHTAG = 'valasztas2026';
 const SIZE = 5;
 const CENTER = Math.floor((SIZE * SIZE) / 2);
@@ -113,7 +113,6 @@ function Modal({ isOpen, onClose, title, children, maxWidth = 480 }) {
         animation:'modalIn 0.22s ease'
       }}>
         <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.93) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
-        {/* Modal header stripe */}
         <div style={{display:'flex',height:5}}>
           <div style={{flex:1,background:'#CE2939'}}/>
           <div style={{flex:1,background:'#fff',borderTop:'1px solid #eee',borderBottom:'1px solid #eee'}}/>
@@ -148,7 +147,7 @@ function WelcomeModal({ isOpen, onClose }) {
             <li>Oszd meg az eredményed – a barátaid biztosan sírni fognak a röhögéstől 😂</li>
           </ol>
         </div>
-        <p style={{fontSize:12,color:'#6B7280',marginBottom:16}}>A kártyán 34 tipikus kampányszólam szerepel. Minden játéknál véletlenszerűen 24 kerül a táblára.</p>
+        <p style={{fontSize:12,color:'#6B7280',marginBottom:16}}>A kártyán 39 tipikus kampányszólam szerepel. Minden játéknál véletlenszerűen 24 kerül a táblára.</p>
         <button onClick={onClose} style={{
           width:'100%',padding:'13px',background:'#CE2939',color:'white',
           border:'none',borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer',
@@ -182,24 +181,9 @@ function ShareModal({ isOpen, onClose, isBingo, count }) {
   };
 
   const platforms = [
-    {
-      name: 'Twitter / X',
-      icon: '𝕏',
-      bg: '#000',
-      url: `https://twitter.com/intent/tweet?text=${encodedText}`,
-    },
-    {
-      name: 'Facebook',
-      icon: 'f',
-      bg: '#1877F2',
-      url: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}`,
-    },
-    {
-      name: 'WhatsApp',
-      icon: '💬',
-      bg: '#25D366',
-      url: `https://wa.me/?text=${encodedText}`,
-    },
+    { name: 'Twitter / X', icon: '𝕏', bg: '#000', url: `https://twitter.com/intent/tweet?text=${encodedText}` },
+    { name: 'Facebook', icon: 'f', bg: '#1877F2', url: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encodedText}` },
+    { name: 'WhatsApp', icon: '💬', bg: '#25D366', url: `https://wa.me/?text=${encodedText}` },
   ];
 
   return (
@@ -322,7 +306,6 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#F9FAFB', fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
 
-      {/* Modals */}
       <WelcomeModal isOpen={showWelcome} onClose={() => setShowWelcome(false)} />
       <ShareModal isOpen={showShare} onClose={() => setShowShare(false)} isBingo={isBingo} count={count} />
       <EmbedModal isOpen={showEmbed} onClose={() => setShowEmbed(false)} />
@@ -336,7 +319,6 @@ export default function App() {
 
       {/* Header */}
       <header style={{ background: 'linear-gradient(160deg, #CE2939 0%, #A01F2C 100%)', color: 'white', padding: '1.25rem 1rem 1.4rem', textAlign: 'center', position: 'relative' }}>
-        {/* Help button */}
         <button onClick={() => setShowWelcome(true)}
           style={{ position:'absolute',top:14,right:14,background:'rgba(255,255,255,0.18)',border:'none',borderRadius:8,padding:'6px 8px',cursor:'pointer',color:'white',display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:600 }}>
           <HelpCircle size={15}/> Leírás
@@ -349,7 +331,6 @@ export default function App() {
         <p style={{ fontSize: 13, opacity: 0.92, maxWidth: 340, margin: '0 auto', lineHeight: 1.5 }}>
           Vitát vagy kampánybeszédet hallgatsz? Kattints, ha elhangzik a varázsszó! 🎙️
         </p>
-        {/* Community counter */}
         <div style={{ display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.15)',borderRadius:20,padding:'4px 12px',marginTop:10,fontSize:12,fontWeight:600 }}>
           <Users size={13}/> {formatCount(playCount)} lejátszott kör
         </div>
@@ -358,7 +339,6 @@ export default function App() {
       {/* Main */}
       <main style={{ flex: 1, maxWidth: 520, margin: '0 auto', width: '100%', padding: '1rem' }}>
 
-        {/* BINGO banner */}
         <div style={{ overflow: 'hidden', maxHeight: isBingo ? 80 : 0, transition: 'max-height 0.4s ease', marginBottom: isBingo ? 12 : 0 }}>
           <div style={{ background: 'linear-gradient(135deg,#CE2939,#A01F2C)', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
             <span style={{ fontSize: 22 }}>🏆</span>
@@ -367,7 +347,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4, background: '#D1D5DB', padding: 5, borderRadius: 16, border: '2px solid #CE2939', boxShadow: '0 4px 20px rgba(206,41,57,0.12)' }}>
           {board.map((word, i) => {
             const isCenter = i === CENTER;
@@ -399,7 +378,6 @@ export default function App() {
           {isBingo && <span style={{ color: '#CE2939', fontWeight: 700, marginLeft: 8 }}>🏆 BINGÓ!</span>}
         </p>
 
-        {/* Controls */}
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button onClick={generateBoard} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 8px', background: 'white', color: '#374151', border: '1.5px solid #D1D5DB', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
             onMouseEnter={e=>{e.currentTarget.style.borderColor='#CE2939';e.currentTarget.style.color='#CE2939';}}
@@ -418,7 +396,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Buzzword list */}
         <details style={{ marginTop: 12, background: 'white', border: '1px solid #E5E7EB', borderRadius: 10, padding: '10px 12px' }}>
           <summary style={{ fontSize: 12, color: '#6B7280', cursor: 'pointer', userSelect:'none' }}>📋 Mind a {BUZZWORDS.length} varázsszó megtekintése</summary>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 10 }}>
@@ -444,7 +421,7 @@ export default function App() {
           style={{ color: '#CE2939', fontWeight: 700, textDecoration: 'none', fontSize: 11, letterSpacing:0.3 }}
           onMouseEnter={e=>e.currentTarget.style.textDecoration='underline'}
           onMouseLeave={e=>e.currentTarget.style.textDecoration='none'}>
-          🤖 Készítette: GaiaAgent.hu
+          🤖 Készítette: GaiaAgent.cc
         </a>
       </footer>
     </div>
