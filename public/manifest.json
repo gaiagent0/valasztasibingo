@@ -1,0 +1,24 @@
+{
+  "name": "Választási Bingó 2026",
+  "short_name": "Bingó 2026",
+  "description": "Interaktív választási bingó a 2026-os kampányhoz",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf9f6",
+  "theme_color": "#aa0424",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,136 +1,366 @@
-import React, { useState, useEffect } from 'react'
-import { Trophy, Users } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react'
+import TopBar from '../components/TopBar.jsx'
+import LegalFooter from '../components/LegalFooter.jsx'
+import { LEADERBOARD as FALLBACK } from '../lib/data.js'
+import { supabase } from '../lib/supabase.js'
+import { useDailyChallenge } from '../hooks/useDailyChallenge.js'
 
-function SkeletonCard() {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      background: 'white', borderRadius: 12, padding: '12px 16px',
-      border: '1px solid #E5E7EB',
-    }}>
-      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#E5E7EB', animation: 'pulse 1.5s ease-in-out infinite' }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ height: 14, width: '60%', background: '#E5E7EB', borderRadius: 6, marginBottom: 6, animation: 'pulse 1.5s ease-in-out infinite' }} />
-        <div style={{ height: 12, width: '40%', background: '#F3F4F6', borderRadius: 6, animation: 'pulse 1.5s ease-in-out infinite' }} />
-      </div>
-      <div style={{ width: 40, height: 20, background: '#E5E7EB', borderRadius: 6, animation: 'pulse 1.5s ease-in-out infinite' }} />
-    </div>
-  )
+const INITIALS_COLORS = [
+  'bg-secondary text-on-secondary',
+  'bg-primary-fixed text-on-primary-fixed-variant',
+  'bg-secondary-fixed text-on-secondary-container',
+  'bg-surface-container-high text-on-surface-variant',
+  'bg-surface-container-high text-on-surface-variant',
+]
+
+const FALLBACK_LEADERS = FALLBACK.map(p => ({
+  id: p.rank, display_name: p.name, total_points: p.points,
+  total_bingos: 0, level: 1, rank: p.rank
+}))
+
+function toInitials(name = '') {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '??'
 }
 
-const RANK_COLORS = ['#CE2939', '#477050', '#6B7280']
-const RANK_ICONS = ['🥇', '🥈', '🥉']
+function relativeTime(iso) {
+  const diff = (Date.now() - new Date(iso)) / 1000
+  if (diff < 60) return 'most'
+  if (diff < 3600) return `${Math.floor(diff / 60)} perce`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} órája`
+  return `${Math.floor(diff / 86400)} napja`
+}
 
-export default function CommunityScreen({ user }) {
-  const [leaders, setLeaders] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function CommunityScreen({ user, onNavigate, onMenuClick, onProfileClick, leftIcon = 'menu' }) {
+  const [leaders, setLeaders] = useState(null)
+  const [activity, setActivity] = useState([])
+  const [toast, setToast] = useState(null)
+  const [dailyChamp, setDailyChamp] = useState(null)
+  const { challenge, completed } = useDailyChallenge(user)
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
+  }
 
   useEffect(() => {
-    supabase.from('leaderboard').select('*').limit(10)
-      .then(({ data, error }) => {
-        if (!error) setLeaders(data ?? [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
+    const loadLeaders = async () => {
+      const { data } = await supabase.from('leaderboard').select('*').limit(5)
+      if (data?.length) setLeaders(data)
+      else setLeaders(FALLBACK_LEADERS)
+    }
+    loadLeaders()
+
+    const channel = supabase
+      .channel('leaderboard-changes')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bingo_sessions' },
+        () => loadLeaders()
+      )
+      .subscribe()
+
+    return () => supabase.removeChannel(channel)
   }, [])
 
+  useEffect(() => {
+    const loadActivity = async () => {
+      const { data, error } = await supabase
+        .from('bingo_sessions')
+        .select('id, completed_at, points_earned, profiles(display_name, avatar_url)')
+        .order('completed_at', { ascending: false })
+        .limit(5)
+      if (data?.length) {
+        setActivity(data)
+      } else {
+        const { data: plain } = await supabase
+          .from('bingo_sessions')
+          .select('id, completed_at, points_earned')
+          .order('completed_at', { ascending: false })
+          .limit(5)
+        setActivity((plain ?? []).map(d => ({ ...d, profiles: { display_name: 'Játékos' } })))
+      }
+    }
+    loadActivity()
+
+    const channel2 = supabase
+      .channel('activity-feed')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bingo_sessions' },
+        () => loadActivity()
+      )
+      .subscribe()
+
+    return () => supabase.removeChannel(channel2)
+  }, [])
+
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('sv-SE')
+    supabase
+      .from('bingo_sessions')
+      .select('user_id, points_earned, profiles(display_name, avatar_url)')
+      .gte('completed_at', today + 'T00:00:00')
+      .order('points_earned', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data?.[0]) setDailyChamp(data[0])
+      })
+  }, [])
+
+  const LEADERBOARD = leaders ?? FALLBACK_LEADERS
+  const loading = leaders === null
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+    <div className="flex flex-col min-h-screen bg-background tapestry-bg">
+      <TopBar title="Választási Bingó 2026" leftIcon={leftIcon} onLeftClick={onMenuClick} onRightClick={onProfileClick} />
+      <main className="flex-1 px-5 pt-6 pb-32 max-w-2xl mx-auto w-full space-y-8 slide-up">
 
-      {/* Header card */}
-      <div style={{
-        background: 'linear-gradient(135deg, #CE2939 0%, #A01F2C 100%)',
-        borderRadius: 16, padding: '20px 16px', marginBottom: 16,
-        color: 'white', textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 32, marginBottom: 4 }}>🏆</div>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>Közösségi Toplista</div>
-        <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
-          Gyűjts pontokat bingóval!
-        </div>
-      </div>
-
-      {/* Leaderboard */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {loading ? (
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
-        ) : leaders.length === 0 ? (
-          <div style={{
-            background: 'white', borderRadius: 12, padding: '32px 16px',
-            textAlign: 'center', border: '1px solid #E5E7EB',
-          }}>
-            <Users size={32} color="#D1D5DB" style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: 14, color: '#6B7280' }}>Még nincsenek eredmények</p>
-            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>Légy az első! Játssz bingót!</p>
+        {/* Header */}
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface leading-none">Közösség</h2>
+            <p className="text-on-surface-variant font-body mt-2 text-sm">A nép szava és a játékosok versenye.</p>
           </div>
-        ) : (
-          leaders.map((leader, idx) => (
-            <div key={leader.id} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: 'white', borderRadius: 12, padding: '12px 16px',
-              border: idx === 0 ? '2px solid #CE2939' : '1px solid #E5E7EB',
-              boxShadow: idx === 0 ? '0 2px 8px rgba(206,41,57,0.15)' : 'none',
-            }}>
-              {/* Rank */}
-              <div style={{ fontSize: 22, minWidth: 32, textAlign: 'center' }}>
-                {idx < 3 ? RANK_ICONS[idx] : (
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#9CA3AF' }}>
-                    {leader.rank || idx + 1}
-                  </span>
-                )}
+          <div className="bg-secondary-container px-3 py-1 rounded-full">
+            <span className="text-on-secondary-container text-xs font-headline font-bold uppercase tracking-wider">ÉLŐ</span>
+          </div>
+        </div>
+
+        {/* Leaderboard */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+            <h3 className="text-lg font-headline font-bold text-on-surface">Top Játékosok</h3>
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-20 bg-surface-container-high rounded-2xl animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* #1 hero card */}
+              {(() => {
+                const p = LEADERBOARD[0]
+                const isMe = user && p?.id === user.id
+                return (
+                  <div className={`p-5 rounded-2xl shadow-sm border-l-4 border-secondary flex items-center justify-between ${isMe ? 'bg-primary/5' : 'bg-surface-container-lowest'}`}>
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        {p?.avatar_url ? (
+                          <img src={p.avatar_url} className="w-14 h-14 rounded-full object-cover" alt="" />
+                        ) : (
+                          <div className="w-14 h-14 rounded-full bg-secondary-container flex items-center justify-center font-headline font-black text-lg text-secondary border-2 border-secondary-container">
+                            {toInitials(p?.display_name)}
+                          </div>
+                        )}
+                        <div className="absolute -top-1 -right-1 bg-secondary text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold font-headline">1</div>
+                      </div>
+                      <div>
+                        <p className="font-headline font-bold text-on-surface text-base flex items-center gap-1">
+                          {p?.display_name}
+                          {isMe && <span className="bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1">TE</span>}
+                        </p>
+                        <p className="font-body text-xs text-on-surface-variant">{p?.total_points ?? 0} Bingó Pont</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Ranks 2–3 */}
+              <div className="grid grid-cols-2 gap-3">
+                {LEADERBOARD.slice(1, 3).map((p, idx) => {
+                  const isMe = user && p.id === user.id
+                  return (
+                    <div key={p.id ?? p.rank} className={`p-4 rounded-xl flex items-center gap-3 ${isMe ? 'bg-primary/5 border border-primary/20' : 'bg-surface-container-low'}`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-headline font-bold text-sm ${INITIALS_COLORS[idx + 1]}`}>
+                        {idx + 2}
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="font-headline font-bold text-sm truncate flex items-center gap-1">
+                          {p.display_name}
+                          {isMe && <span className="bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full">TE</span>}
+                        </p>
+                        <p className="font-body text-[10px] text-on-surface-variant">{p.total_points ?? 0} pont</p>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
-              {/* Avatar */}
-              {leader.avatar_url ? (
-                <img
-                  src={leader.avatar_url}
-                  alt=""
-                  style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  background: idx < 3 ? RANK_COLORS[idx] : '#E5E7EB',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, color: 'white', fontWeight: 700,
-                }}>
-                  {(leader.display_name || 'N')[0].toUpperCase()}
+              {/* Ranks 4–5 */}
+              <div className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-outline-variant/10">
+                {LEADERBOARD.slice(3).map((p, idx) => {
+                  const isMe = user && p.id === user.id
+                  return (
+                    <div key={p.id ?? p.rank} className={isMe ? 'bg-primary/5' : ''}>
+                      <div className="flex items-center justify-between p-4">
+                        <div className="flex items-center gap-3">
+                          <span className="font-headline font-bold text-on-surface-variant w-5 text-center">{p.rank ?? idx + 4}</span>
+                          <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center font-headline font-bold text-xs text-on-surface-variant">
+                            {toInitials(p.display_name)}
+                          </div>
+                          <p className="font-body font-semibold text-sm flex items-center gap-1">
+                            {p.display_name}
+                            {isMe && <span className="bg-primary text-on-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full">TE</span>}
+                          </p>
+                        </div>
+                        <span className="font-headline font-bold text-xs text-on-surface-variant">{p.total_points ?? 0} pt</span>
+                      </div>
+                      {idx < LEADERBOARD.slice(3).length - 1 && <div className="h-px mx-4 bg-surface-container" />}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Saját pozíció kártya ha nem top 5 */}
+              {user && !leaders?.find(l => l.id === user.id) && (
+                <div className="bg-primary/5 border border-primary/20 p-4 rounded-xl flex items-center gap-3 mt-2">
+                  <span className="material-symbols-outlined text-primary text-sm">person</span>
+                  <div className="flex-1">
+                    <p className="font-headline font-bold text-sm text-primary">A te pozíciód</p>
+                    <p className="font-body text-xs text-on-surface-variant">Bingózz többet a top 5-be kerüléshez!</p>
+                  </div>
                 </div>
               )}
+            </>
+          )}
+        </section>
 
-              {/* Name + level */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 14, fontWeight: 600, color: '#111827',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {leader.display_name || 'Névtelen Választó'}
-                  {user && leader.id === user.id && (
-                    <span style={{ fontSize: 11, color: '#CE2939', marginLeft: 6 }}>(te)</span>
+        {/* Aktivitás feed */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+            <h3 className="text-lg font-headline font-bold text-on-surface">Friss aktivitás</h3>
+          </div>
+          <div className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/10">
+            {activity.map(item => (
+              <div key={item.id} className="flex items-center gap-3 py-2 border-b border-outline-variant/10 last:border-0">
+                <div className="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center text-xs font-bold text-secondary flex-shrink-0">
+                  {toInitials(item.profiles?.display_name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-body">
+                    <span className="font-bold">{item.profiles?.display_name ?? 'Névtelen'}</span>
+                    <span className="text-on-surface-variant"> bingózott</span>
+                  </p>
+                  <p className="text-xs text-on-surface-variant">{relativeTime(item.completed_at)} • +{item.points_earned} pont</p>
+                </div>
+                <span className="material-symbols-outlined text-secondary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>grid_view</span>
+              </div>
+            ))}
+            {activity.length === 0 && (
+              <p className="text-sm text-on-surface-variant text-center py-4">
+                Még nincs aktivitás – légy az első! 🎯
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* Challenges */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+              <h3 className="text-lg font-headline font-bold text-on-surface">Legújabb Kihívások</h3>
+            </div>
+            <button
+              onClick={() => showToast('Hamarosan több kihívás! 🚀')}
+              className="text-primary font-headline text-xs font-bold uppercase tracking-widest active:opacity-60 transition-opacity"
+            >
+              Összes
+            </button>
+          </div>
+
+          {/* Napi küldetés */}
+          <div className="bg-surface-container-low rounded-2xl overflow-hidden">
+            <div className="h-28 w-full relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/80 to-primary-container" />
+              <div className="absolute inset-0 opacity-20" style={{
+                backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z' fill='%23ffffff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E\")",
+                backgroundSize: '40px'
+              }} />
+              <div className="absolute inset-0 bg-gradient-to-t from-surface-container-low to-transparent" />
+            </div>
+            <div className="p-5 -mt-8 relative z-10">
+              <div className="bg-surface-container-lowest p-4 rounded-xl shadow-sm">
+                <span className="text-[10px] font-headline font-bold text-primary uppercase tracking-widest mb-1 block">Napi küldetés</span>
+                <h4 className="font-headline font-extrabold text-lg text-on-surface mb-1">
+                  {challenge?.title ?? 'A Parlament Hangjai'}
+                </h4>
+                <p className="font-body text-sm text-on-surface-variant mb-4">
+                  {challenge?.description ?? 'Tölts ki 3 mezőt a mai közvetítés alatt!'}
+                </p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 text-xs text-on-surface-variant">
+                    <span className="material-symbols-outlined text-sm">people</span>
+                    <span>+{challenge?.bonus_points ?? 50} pont</span>
+                  </div>
+                  {completed ? (
+                    <span className="bg-secondary-container text-on-secondary-container text-xs font-headline font-bold px-3 py-1.5 rounded-lg">
+                      ✓ Teljesítve +{challenge?.bonus_points ?? 50} pont
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => onNavigate('bingo')}
+                      className="bg-primary text-on-primary text-xs font-headline font-bold py-2 px-5 rounded-lg active:scale-95 transition-transform shadow-sm"
+                    >
+                      Csatlakozom
+                    </button>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: '#6B7280' }}>
-                  Szint {leader.level || 1} · {leader.total_bingos || 0} bingó
-                </div>
-              </div>
-
-              {/* Points */}
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: idx < 3 ? RANK_COLORS[idx] : '#374151' }}>
-                  {leader.total_points || 0}
-                </div>
-                <div style={{ fontSize: 10, color: '#9CA3AF' }}>pont</div>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          </div>
+
+          {/* Közös Bingó Est – hamarosan */}
+          <div className="bg-surface-container-low p-5 rounded-2xl flex items-center gap-4 opacity-50">
+            <div className="bg-surface-container-high p-3.5 rounded-xl flex-shrink-0">
+              <span className="material-symbols-outlined text-on-surface-variant text-2xl">groups</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-headline font-bold text-on-surface-variant text-sm">Közös Bingó Est</h4>
+              <p className="font-body text-xs text-on-surface-variant mt-0.5">Hamarosan elérhető</p>
+            </div>
+            <span className="bg-surface-container text-on-surface-variant text-[10px] font-headline font-bold px-2 py-1 rounded-full">
+              Hamarosan
+            </span>
+          </div>
+
+          {/* Napi Bajnok */}
+          <div className="bg-surface-container-low p-5 rounded-2xl flex items-center gap-4">
+            <div className="bg-primary-fixed p-3.5 rounded-xl flex-shrink-0">
+              <span className="material-symbols-outlined text-primary text-2xl">emoji_events</span>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-headline font-bold text-on-surface text-sm">Napi Bajnok</h4>
+              {dailyChamp ? (
+                <p className="font-body text-xs text-on-surface-variant mt-0.5">
+                  {dailyChamp.profiles?.display_name ?? 'Játékos'} • +{dailyChamp.points_earned} pont ma
+                </p>
+              ) : (
+                <p className="font-body text-xs text-on-surface-variant mt-0.5">Ma még nincs bajnok – légy az első!</p>
+              )}
+            </div>
+            {dailyChamp ? (
+              <div className="w-9 h-9 rounded-full bg-secondary-container flex items-center justify-center font-headline font-bold text-sm text-secondary flex-shrink-0">
+                {toInitials(dailyChamp.profiles?.display_name)}
+              </div>
+            ) : (
+              <span className="material-symbols-outlined text-secondary text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>emoji_events</span>
+            )}
+          </div>
+        </section>
+        <LegalFooter />
+      </main>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-on-surface text-surface text-sm font-headline font-bold px-5 py-3 rounded-2xl shadow-lg animate-fade-in whitespace-nowrap">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,55 +1,108 @@
-# ⚠️ FIGYELEM – REPO AZONOSÍTÁS
+# CLAUDE.md — kozeletimozaik
+> Frissítve: 2026-04-13
 
-> **Ez a `valasztasibingo` repo (`gaiagent0/valasztasibingo`)**
-> **GitHub URL:** https://github.com/gaiagent0/valasztasibingo
-> **NE commitolj ide `kozeletimozaik` kódot!**
-> **A két projekt KÜLÖNBÖZŐ mappában és KÜLÖNBÖZŐ repóban él:**
-> - `valasztasibingo` → `C:\Users\istva\Dev\portfolio\Projects\valasztasibingo`
-> - `kozeletimozaik` → `C:\Users\istva\Dev\portfolio\Projects\kozeletimozaik`
->
-> **Ellenőrizd minden commit előtt:** `git remote -v` → `valasztasibingo`-t kell mutatnia!
+## ⚠️ REPO AZONOSÍTÁS
+
+**Ez a `kozeletimozaik` repo** (`gaiagent0/kozeletimozaik`)  
+Mappa: `C:\Users\istva\Dev\portfolio\Projects\kozeletimozaik`  
+Live URL: https://valasztasibingo.hu | https://kozeletimozaik.vercel.app
+
+**NE keverd a `valasztasibingo` repóval** (egyszerűbb önálló bingó, külön repo/mappa).
+```bash
+git remote -v  # → kozeletimozaik
+```
 
 ---
 
-# Választási Bingó – valasztasibingo
+## Projekt
 
-## Projekt kontextus
+Választási Bingó 2026 — interaktív 4-képernyős PWA a 2026-os magyar választáshoz.
 
-**Alkalmazás neve:** Választási Bingó 2026
-**GitHub repo:** https://github.com/gaiagent0/valasztasibingo
-**Vercel projekt:** valasztasibingo
-**Live URL:** https://valasztasibingo.vercel.app
-**Domain:** https://valasztasibingo.hu
+---
 
 ## Tech stack
 
-- React 18 + Vite 5
-- Inline styles (nincs Tailwind!)
-- Lucide React ikonok
-- Magyar piros-fehér-zöld arculat (#CE2939, #477050)
+React 18 + Vite 5 + Tailwind CSS 3 (Material Design 3)  
+Supabase (PostgreSQL + Auth + Realtime) · Vercel Edge Function  
+Google Material Symbols · Plus Jakarta Sans + Manrope · html2canvas
 
-## Struktúra
+---
 
-Ez egy **egyszerű, önálló bingó app** – egyetlen `App.jsx` fájl, nincs backend, nincs Supabase.
+## Infrastruktúra
+
+| | |
+|---|---|
+| Vercel projekt | gaiagent0/kozeletimozaik |
+| Supabase projekt ID | `zkjmdxibelcnxsryirph` |
+| Supabase URL | `https://zkjmdxibelcnxsryirph.supabase.co` |
+| Domain | valasztasibingo.hu (Rackhost DNS → Vercel) |
+
+---
+
+## Képernyők (`src/screens/`)
+
+1. `BingoScreen` — welcome + 5×5 játéktábla, konfetti, hang, haptic, screenshot
+2. `CommunityScreen` — realtime leaderboard, TE badge, aktivitás feed, napi kihívás
+3. `NewsScreen` — RSS hírek (Telex/444/HVG), politikai szűrés
+4. `SettingsScreen` — Google/anon auth, profil, togglek (localStorage)
+
+---
+
+## Fontos fájlok
 
 ```
 src/
-  App.jsx      ← az egyetlen screen, minden logika itt van
-  main.jsx
-  index.css
+  lib/supabase.js, auth.js, settings.js
+  hooks/useAuth.js, useDailyChallenge.js
+  components/TopBar.jsx, BottomNav.jsx
+  screens/Bingo|Community|News|SettingsScreen.jsx
+api/news.js          ← Vercel Edge Function, RSS + politikai szűrés
+public/manifest.json, sw.js
 ```
 
-## Mit NE csinálj ebben a repóban
+---
 
-- ❌ Ne add hozzá a Supabase klienst
-- ❌ Ne hozz létre `src/screens/` mappát
-- ❌ Ne importálj Tailwind-et
-- ❌ Ne hozz létre `api/` mappát
-- ❌ Ne változtasd meg az arculatot
+## Supabase táblák
 
-## Amit szabad csinálni
+- `profiles` — total_points, total_bingos, level
+- `bingo_sessions` — játékok mentése
+- `leaderboard` — view (rank() függvény)
+- `daily_challenges` — napi kihívás
+- Auth: Anonymous sign-in ✅, Google OAuth ✅
 
-- ✅ Bővíteni a BUZZWORDS listát
-- ✅ Javítani a bingó logikát
-- ✅ Javítani a megosztás szövegét
-- ✅ Kisebb UI javítások az `App.jsx`-ben
+---
+
+## Kész funkciók
+
+PWA, hangeffektek (Web Audio API), haptic, LocalStorage, Web Share + html2canvas,
+politikai hírek szűrés (34 kulcsszó), napi kihívás, realtime leaderboard, aktivitás feed,
+TopBar gombok (bal→bingo, jobb→settings), "Választási Bingó 2026" branding.
+
+---
+
+## Fejlesztési szabályok
+
+1. `npm run build` — 0 hibával fusson commit előtt
+2. Design rendszert ne változtasd (Tailwind konfig, CSS változók)
+3. Commit prefix: `feat:` / `fix:` / `chore:`
+4. Csak a megjelölt fájlt módosítsd — ne törj el más screen-eket
+
+---
+
+## Parancsok
+
+```bash
+npm run dev        # lokális dev
+npm run build      # prod build
+git remote -v      # repo ellenőrzés (!)
+git add -A && git commit -m "feat: ..." && git push
+```
+
+---
+
+## Nyitott feladatok
+
+- Dark mode
+- Több RSS forrás (index.hu, mno.hu)
+- Profil szerkesztés (username)
+- TikTok/Instagram OAuth (placeholder)

@@ -1,139 +1,137 @@
-import React, { useState, useEffect } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import TopBar from '../components/TopBar.jsx'
+import LegalFooter from '../components/LegalFooter.jsx'
+import { NEWS as FALLBACK_NEWS } from '../lib/data.js'
 
-function timeAgo(isoDate) {
-  const diff = Date.now() - new Date(isoDate).getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 60) return `${minutes} perce`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} órája`
-  const days = Math.floor(hours / 24)
-  return `${days} napja`
+const DOT_COLORS = ['bg-primary', 'bg-secondary', 'bg-outline', 'bg-primary', 'bg-secondary']
+const SOURCE_TAGS = { Telex: 'bg-primary-fixed text-on-primary-fixed-variant', '444': 'bg-secondary-container text-on-secondary-container', HVG: 'bg-secondary-fixed text-on-secondary-container' }
+
+function timeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 60) return `${m} perce`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} órája`
+  return `${Math.floor(h / 24)} napja`
 }
 
-function SkeletonCard() {
-  return (
-    <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
-      <div style={{ height: 160, background: '#E5E7EB', animation: 'pulse 1.5s ease-in-out infinite' }} />
-      <div style={{ padding: '12px 14px' }}>
-        <div style={{ height: 12, width: '30%', background: '#E5E7EB', borderRadius: 6, marginBottom: 8, animation: 'pulse 1.5s ease-in-out infinite' }} />
-        <div style={{ height: 16, background: '#E5E7EB', borderRadius: 6, marginBottom: 6, animation: 'pulse 1.5s ease-in-out infinite' }} />
-        <div style={{ height: 16, width: '80%', background: '#E5E7EB', borderRadius: 6, animation: 'pulse 1.5s ease-in-out infinite' }} />
-      </div>
-    </div>
-  )
-}
-
-const SOURCE_COLORS = {
-  'Telex': '#1a73e8',
-  '444': '#e53935',
-  'HVG': '#2e7d32',
-}
-
-export default function NewsScreen() {
-  const [articles, setArticles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+export default function NewsScreen({ onNavigate, onMenuClick, onProfileClick, leftIcon = 'menu' }) {
+  const [articles, setArticles] = useState(null) // null = loading
 
   useEffect(() => {
     fetch('/api/news')
       .then(r => r.json())
-      .then(data => { setArticles(data); setLoading(false) })
-      .catch(() => { setError(true); setLoading(false) })
+      .then(data => setArticles(data?.length ? data : []))
+      .catch(() => setArticles([]))
   }, [])
 
+  // If API failed/empty, use fallback static data
+  const items = articles
+    ? articles.map((a, i) => ({
+        id: a.id,
+        time: timeAgo(a.pubDate),
+        tag: a.source,
+        tagColor: SOURCE_TAGS[a.source] ?? 'bg-surface-container text-on-surface-variant',
+        title: a.title,
+        body: a.description?.slice(0, 180) || '',
+        link: a.link,
+        image: a.image,
+      }))
+    : FALLBACK_NEWS
+
+  const loading = articles === null && !FALLBACK_NEWS
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+    <div className="flex flex-col min-h-screen bg-surface">
+      <TopBar title="Választási Bingó 2026" leftIcon={leftIcon} rightIcon="filter_list" onLeftClick={onMenuClick} onRightClick={onProfileClick} />
+      <main className="flex-1 px-5 pt-6 pb-32 max-w-2xl mx-auto w-full slide-up">
 
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 14 }}>
-        Magyar Politikai Hírek
-      </h2>
-
-      {error && (
-        <div style={{
-          background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12,
-          padding: '12px 16px', marginBottom: 14, fontSize: 13, color: '#991B1B',
-        }}>
-          Nem sikerült betölteni a híreket. Ellenőrizd az internetkapcsolatot.
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {loading ? (
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
-        ) : articles.length === 0 ? (
-          <div style={{
-            background: 'white', borderRadius: 12, padding: '32px 16px',
-            textAlign: 'center', border: '1px solid #E5E7EB',
-          }}>
-            <p style={{ fontSize: 14, color: '#6B7280' }}>Nincsenek elérhető hírek</p>
+        {/* Editorial header */}
+        <div className="mb-8 relative">
+          <div className="absolute -right-4 -top-6 opacity-[0.06] pointer-events-none select-none">
+            <span className="material-symbols-outlined text-[120px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>spa</span>
           </div>
-        ) : (
-          articles.map(article => (
-            <div key={article.id} style={{
-              background: 'white', borderRadius: 16, overflow: 'hidden',
-              border: '1px solid #E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-            }}>
-              {/* Image */}
-              {article.image && (
-                <img
-                  src={article.image}
-                  alt=""
-                  style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
-                  loading="lazy"
-                  onError={e => { e.target.style.display = 'none' }}
-                />
-              )}
+          <h2 className="font-headline font-extrabold text-4xl tracking-tighter text-on-surface mb-2">Hírek</h2>
+          <p className="text-on-surface-variant font-body font-medium leading-relaxed text-sm max-w-xs">
+            Friss, ropogós és teljesen szubjektív jelentések a nemzeti politika útvesztőiből.
+          </p>
+        </div>
 
-              <div style={{ padding: '12px 14px' }}>
-                {/* Source + time */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: 'white',
-                    background: SOURCE_COLORS[article.source] || '#6B7280',
-                    borderRadius: 4, padding: '2px 7px',
-                  }}>
-                    {article.source}
-                  </span>
-                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>
-                    {timeAgo(article.pubDate)}
-                  </span>
+        {/* Timeline */}
+        <div className="space-y-8 relative">
+          <div className="absolute left-3 top-0 bottom-0 w-px bg-outline-variant/30 z-0" />
+
+          {articles === null ? (
+            // Skeleton loaders
+            [...Array(3)].map((_, i) => (
+              <div key={i} className="relative pl-10">
+                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-surface-container-high border-4 border-surface animate-pulse" />
+                <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 space-y-3 animate-pulse">
+                  <div className="h-3 w-24 bg-surface-container-high rounded" />
+                  <div className="h-5 bg-surface-container-high rounded" />
+                  <div className="h-4 w-3/4 bg-surface-container-high rounded" />
                 </div>
-
-                {/* Title */}
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.4, marginBottom: 6 }}>
-                  {article.title}
-                </h3>
-
-                {/* Description */}
-                {article.description && (
-                  <p style={{ fontSize: 13, color: '#6B7280', lineHeight: 1.5, marginBottom: 10 }}>
-                    {article.description.slice(0, 150)}{article.description.length > 150 ? '…' : ''}
-                  </p>
-                )}
-
-                {/* Link */}
-                <a
-                  href={article.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                    fontSize: 13, fontWeight: 600, color: '#CE2939', textDecoration: 'none',
-                  }}
-                >
-                  Elolvasom <ExternalLink size={13} />
-                </a>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          ) : (
+            items.map((item, idx) => (
+              <article key={item.id} className="relative pl-10 group slide-up" style={{ animationDelay: `${idx * 60}ms` }}>
+                <div className={`absolute left-0 top-1 w-6 h-6 rounded-full ${DOT_COLORS[idx % DOT_COLORS.length]} border-4 border-surface z-10`} />
+
+                <div className="bg-surface-container-lowest rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-outline-variant/10 relative overflow-hidden">
+                  {item.image && (
+                    <img src={item.image} alt="" className="w-full aspect-video object-cover"
+                      onError={e => { e.target.style.display = 'none' }} loading="lazy" />
+                  )}
+                  <div className="p-5">
+                    <div className="absolute left-0 top-0 w-1 h-full bg-primary/10 rounded-l-xl" />
+
+                    <header className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-headline font-bold uppercase tracking-widest text-primary">{item.time}</span>
+                      <span className={`${item.tagColor} text-[11px] font-headline font-bold px-2 py-0.5 rounded uppercase tracking-wide`}>
+                        {item.tag}
+                      </span>
+                    </header>
+
+                    <h3 className="font-headline font-bold text-lg leading-snug text-on-surface mb-2">{item.title}</h3>
+                    {item.body && <p className="text-on-surface-variant text-sm leading-relaxed mb-4">{item.body}</p>}
+
+                    <div className="flex items-center justify-between pt-3 border-t border-surface-container">
+                      <div className="flex items-center gap-3">
+                        {item.likes !== undefined && (
+                          <button className="flex items-center gap-1 text-primary">
+                            <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                            <span className="text-xs font-headline font-bold">{item.likes}</span>
+                          </button>
+                        )}
+                        {item.comments !== undefined && (
+                          <button className="flex items-center gap-1 text-on-surface-variant">
+                            <span className="material-symbols-outlined text-base">chat_bubble</span>
+                            <span className="text-xs font-headline font-bold">{item.comments}</span>
+                          </button>
+                        )}
+                      </div>
+                      {item.link ? (
+                        <a href={item.link} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs font-headline font-bold text-primary active:scale-95">
+                          <span className="material-symbols-outlined text-base">open_in_new</span>
+                          ELOLVASOM
+                        </a>
+                      ) : (
+                        <button className="flex items-center gap-1.5 text-xs font-headline font-bold text-on-surface-variant hover:text-primary transition-colors active:scale-95">
+                          <span className="material-symbols-outlined text-base">share</span>
+                          MEGOSZTÁS
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+        <LegalFooter />
+      </main>
     </div>
   )
 }

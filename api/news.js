@@ -15,7 +15,6 @@ export default async function handler(req) {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KozeletiMozaik/1.0)' }
       })
       const xml = await res.text()
-
       const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3)
 
       for (const [, item] of items) {
@@ -31,7 +30,7 @@ export default async function handler(req) {
 
         if (title && link) {
           results.push({
-            id: btoa(link).slice(0, 12),
+            id: btoa(encodeURIComponent(link)).slice(0, 12),
             title,
             description: description || '',
             link,
@@ -48,7 +47,31 @@ export default async function handler(req) {
 
   results.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
 
-  return new Response(JSON.stringify(results.slice(0, 12)), {
+  const POLITICAL_KEYWORDS = [
+    'választás', 'választási', 'szavazás', 'szavazat', 'szavazók', 'szavazókör',
+    'kampány', 'kampányol', 'jelölt', 'jelöltek', 'lista', 'mandátum',
+    'fidesz', 'tisza', 'párt', 'ellenzék', 'koalíció', 'frakció',
+    'orbán', 'magyar péter', 'miniszterelnök', 'képviselő', 'politikus',
+    'parlament', 'kormány', 'miniszter', 'államtitkár', 'önkormányzat',
+    'polgármester', 'főpolgármester', 'nemzetgyűlés', 'köztársaság',
+    'rezsi', 'infláció', 'adó', 'nyugdíj', 'egészségügy', 'oktatás',
+    'lakhatás', 'bérek', 'minimálbér', 'munkanélküli', 'szegénység',
+    'brüsszel', 'eu', 'európai', 'oroszország', 'ukrajna', 'nato',
+    'szuverenitás', 'migráció', 'határőrizet',
+    'korrupció', 'átláthatóság', 'tüntetés', 'civil', 'ngo',
+    'médiaszabadság', 'sajtó', 'bíróság', 'alkotmánybíróság',
+    'alaptörvény', 'törvény', 'rendelet', 'határozat'
+  ]
+
+  const isPolitical = (title = '', description = '') => {
+    const text = (title + ' ' + description).toLowerCase()
+    return POLITICAL_KEYWORDS.some(kw => text.includes(kw))
+  }
+
+  const political = results.filter(r => isPolitical(r.title, r.description))
+  const finalResults = political.length >= 3 ? political : results
+
+  return new Response(JSON.stringify(finalResults.slice(0, 12)), {
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 's-maxage=900, stale-while-revalidate=1800',

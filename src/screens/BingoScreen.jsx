@@ -1,240 +1,598 @@
-import React, { useState, useCallback } from 'react'
-import { Share2, RotateCcw, Check } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import TopBar from '../components/TopBar.jsx'
+import LegalFooter from '../components/LegalFooter.jsx'
+import { BUZZWORDS } from '../lib/data.js'
+import { SIZE, CENTER, makeBoard, checkWin, launchConfetti } from '../lib/bingo.js'
+import { supabase } from '../lib/supabase.js'
+import { playSound, vibrate, getSettings } from '../lib/settings.js'
 
-const BUZZWORDS = [
-  "Brüsszel", "Családok", "Infláció", "Szuverenitás", "Béke",
-  "Háború", "Dollárbaloldal", "Korrupció", "Megvédjük", "Gyurcsány",
-  "Mészáros", "EU-s pénzek", "Soros", "Rezsi", "Nyugdíjasok",
-  "Kétharmad", "Diktatúra", "Pedofilbotrány", "Gazdasági növekedés", "Adócsökkentés",
-  "Elmúlt 14 év", "Migráció", "Példátlan", "Nemzeti érdek", "Propaganda",
-  "Oktatás állapota", "Egészségügy", "Válság", "Külföldi ügynök", "Alaptörvény",
-  "Vidéki Magyarország", "Elszámoltatás", "Felelősség", "Európai értékek"
-]
-
-const SIZE = 5
-const CENTER = Math.floor((SIZE * SIZE) / 2)
-
-function shuffle(arr) {
-  return [...arr].sort(() => 0.5 - Math.random())
+function HungarianFlag({ size = 28 }) {
+  return (
+    <svg width={size} height={size * 0.6} viewBox="0 0 3 2"
+      style={{ borderRadius: 3, boxShadow: '0 1px 4px rgba(0,0,0,0.2)', display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="3" height="0.667" y="0" fill="#CE2939" />
+      <rect width="3" height="0.667" y="0.667" fill="#FFFFFF" />
+      <rect width="3" height="0.667" y="1.333" fill="#477050" />
+    </svg>
+  )
 }
 
-function checkWin(sel) {
-  const hits = []
-  for (let r = 0; r < SIZE; r++) {
-    if ([...Array(SIZE)].every((_, c) => sel.has(r * SIZE + c))) {
-      for (let c = 0; c < SIZE; c++) hits.push(r * SIZE + c)
+const ELECTION_TARGET = new Date('2026-04-12T17:00:00Z').getTime() // 2026-04-12 19:00 CEST = 17:00 UTC
+
+function useCountdown() {
+  function calcDisplay() {
+    const remaining = Math.max(0, ELECTION_TARGET - Date.now())
+    const totalHours = Math.floor(remaining / 3600000)
+    const mins = Math.floor((remaining % 3600000) / 60000)
+    const secs = Math.floor((remaining % 60000) / 1000)
+    const pad  = n => String(n).padStart(2, '0')
+    return { totalHours, sub: `${pad(mins)}:${pad(secs)}`, done: remaining === 0 }
+  }
+
+  const [display, setDisplay] = useState(() => calcDisplay())
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = calcDisplay()
+      setDisplay(d)
+      if (d.done) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  return display
+}
+
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(' ')
+  const lines = []
+  let current = ''
+  for (const word of words) {
+    const test = current ? current + ' ' + word : word
+    if (ctx.measureText(test).width > maxWidth && current) {
+      lines.push(current)
+      current = word
+    } else {
+      current = test
     }
   }
-  for (let c = 0; c < SIZE; c++) {
-    if ([...Array(SIZE)].every((_, r) => sel.has(r * SIZE + c))) {
-      for (let r = 0; r < SIZE; r++) hits.push(r * SIZE + c)
-    }
-  }
-  const d1 = [...Array(SIZE)].every((_, i) => sel.has(i * SIZE + i))
-  const d2 = [...Array(SIZE)].every((_, i) => sel.has(i * SIZE + (SIZE - 1 - i)))
-  if (d1) for (let i = 0; i < SIZE; i++) hits.push(i * SIZE + i)
-  if (d2) for (let i = 0; i < SIZE; i++) hits.push(i * SIZE + (SIZE - 1 - i))
-  return new Set(hits)
+  if (current) lines.push(current)
+  return lines.slice(0, 3)
 }
 
-function launchConfetti() {
-  const colors = ['#CE2939', '#477050', '#FFFFFF', '#A01F2C', '#2F4D37', '#F5E6E8']
-  const existing = document.getElementById('confetti-layer')
-  if (existing) existing.remove()
-  const layer = document.createElement('div')
-  layer.id = 'confetti-layer'
-  layer.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;overflow:hidden;'
-  document.body.appendChild(layer)
-  for (let i = 0; i < 80; i++) {
-    const p = document.createElement('div')
-    const isRect = Math.random() > 0.5
-    p.style.cssText = `
-      position:absolute;left:${Math.random() * 100}%;top:-12px;
-      width:${isRect ? '10px' : '8px'};height:${isRect ? '6px' : '8px'};
-      background:${colors[Math.floor(Math.random() * colors.length)]};
-      border-radius:${isRect ? '2px' : '50%'};
-      animation:fall ${1.4 + Math.random() * 2}s ${Math.random() * 0.9}s linear forwards;
-      transform:rotate(${Math.random() * 360}deg);opacity:1;
-    `
-    layer.appendChild(p)
-  }
-  const style = document.createElement('style')
-  style.textContent = `@keyframes fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(105vh) rotate(720deg);opacity:0}}`
-  layer.appendChild(style)
-  setTimeout(() => layer.remove(), 4500)
-}
-
-export default function BingoScreen({ user }) {
-  const [board, setBoard] = useState(() => {
-    const words = shuffle(BUZZWORDS).slice(0, SIZE * SIZE)
-    words[CENTER] = 'INGYEN\nMEZŐ'
-    return words
-  })
+export default function BingoScreen({ user, onNavigate, onMenuClick, onProfileClick }) {
+  const [phase, setPhase] = useState('welcome')
+  const [showAllWords, setShowAllWords] = useState(false)
+  const [board, setBoard] = useState([])
   const [selected, setSelected] = useState(new Set([CENTER]))
   const [winCells, setWinCells] = useState(new Set())
   const [isBingo, setIsBingo] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [shareMsg, setShareMsg] = useState('')
+  const [totalBingos, setTotalBingos] = useState(0)
+  const [stats, setStats] = useState({ bingos: 0, players: 0, topWord: '—' })
+  const savedRef = useRef(false)
+  const countdown = useCountdown()
 
-  const generateBoard = useCallback(() => {
-    const words = shuffle(BUZZWORDS).slice(0, SIZE * SIZE)
-    words[CENTER] = 'INGYEN\nMEZŐ'
-    setBoard(words)
-    setSelected(new Set([CENTER]))
-    setWinCells(new Set())
-    setIsBingo(false)
-    setSaved(false)
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('sv-SE')
+    supabase
+      .from('bingo_sessions')
+      .select('id', { count: 'exact', head: true })
+      .gte('completed_at', today + 'T00:00:00')
+      .then(({ count }) => setStats(s => ({ ...s, bingos: count ?? 0 })))
+
+    supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .then(({ count }) => setStats(s => ({ ...s, players: count ?? 0 })))
+
+    supabase
+      .from('bingo_sessions')
+      .select('words_matched')
+      .gte('completed_at', today + 'T00:00:00')
+      .limit(20)
+      .then(({ data }) => {
+        if (!data?.length) return
+        const freq = {}
+        data.forEach(row => (row.words_matched || []).forEach(w => { freq[w] = (freq[w] || 0) + 1 }))
+        const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0]
+        if (top) setStats(s => ({ ...s, topWord: top[0] }))
+      })
   }, [])
 
   const saveBingoSession = async (sel, currentBoard) => {
-    if (!user) return
+    if (!user || savedRef.current) return
+    savedRef.current = true
     const count = sel.size - 1
     try {
       await supabase.from('bingo_sessions').insert({
         user_id: user.id,
         points_earned: count * 10,
-        words_matched: Array.from(sel)
-          .filter(i => i !== CENTER)
-          .map(i => currentBoard[i])
+        words_matched: Array.from(sel).filter(i => i !== CENTER).map(i => currentBoard[i])
       })
-      await supabase.rpc('increment_profile_stats', {
-        p_user_id: user.id,
-        p_points: count * 10
-      })
+      await supabase.rpc('increment_profile_stats', { p_user_id: user.id, p_points: count * 10 })
     } catch (err) {
       console.error('Failed to save bingo session:', err)
     }
   }
 
+  const startGame = useCallback(() => {
+    const b = makeBoard(BUZZWORDS)
+    setBoard(b)
+    setSelected(new Set([CENTER]))
+    setWinCells(new Set())
+    setIsBingo(false)
+    savedRef.current = false
+    setPhase('game')
+    if (typeof window !== 'undefined' && window.umami) window.umami.track('game_started')
+  }, [])
+
+  const newBoard = useCallback(() => {
+    const b = makeBoard(BUZZWORDS)
+    setBoard(b)
+    setSelected(new Set([CENTER]))
+    setWinCells(new Set())
+    setIsBingo(false)
+  }, [])
+
   const toggleCell = (i) => {
     if (i === CENTER) return
+    const s = getSettings()
+    if (s.sounds) playSound('tap')
+    if (s.haptic) vibrate([30])
     const next = new Set(selected)
     next.has(i) ? next.delete(i) : next.add(i)
     const wins = checkWin(next)
     const bingo = wins.size > 0
     if (bingo && !isBingo) {
       launchConfetti()
-      if (!saved) {
-        setSaved(true)
-        saveBingoSession(next, board)
-      }
+      if (s.sounds) playSound('bingo')
+      if (s.haptic) vibrate([100, 50, 100, 50, 200])
+      if (typeof window !== 'undefined' && window.umami) window.umami.track('bingo_achieved', { count: next.size - 1 })
+      setTotalBingos(n => n + 1)
+      saveBingoSession(next, board)
     }
     setSelected(next)
     setWinCells(wins)
     setIsBingo(bingo)
   }
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    if (typeof window !== 'undefined' && window.umami) window.umami.track('share_clicked', { isBingo })
+
     const count = selected.size - 1
     const url = 'https://valasztasibingo.hu'
-    const text = isBingo
-      ? `🇭🇺 BINGÓ! ${count} megjelölt mező, kijött a sor! Próbáld ki: ${url} #valasztas2026`
-      : `🗳️ ${count}/24 mezőnél tartok a Választási Bingón. Próbáld ki: ${url} #valasztas2026`
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => flash()).catch(() => fallback(text))
-    } else { fallback(text) }
+    const words = Array.from(selected).filter(i => i !== CENTER).map(i => board[i]).slice(0, 3)
+
+    const shareTexts = {
+      bingo: [
+        `🇭🇺 BINGÓ! Kiszúrtam ${count} politikai varázsszót!\n"${words.join('", "')}" – és még több.\n🗳️ Játssz te is! → ${url}\n#ValasztasiBingo #valasztas2026`,
+        `🎯 BINGÓ! ${count} mezőm van – köztük: "${words[0]}"!\nHallgatod a kampánybeszédeket? Játssz velem!\n→ ${url}\n#bingo2026 #valasztas2026`,
+        `🏆 Megcsináltam! ${count}/24 mező – BINGÓ!\nA magyar politika legjobb játéka.\n→ ${url} #ValasztasiBingo`,
+      ],
+      playing: [
+        `🗳️ ${count}/24 mezőnél tartok a Választási Bingón!\nMár hallottam: "${words[0] || 'Brüsszel'}"...\n→ ${url}\n#valasztas2026 #bingo2026`,
+        `🎮 Élőben játszom a Választási Bingót – ${count} szó eddig!\nPróbáld ki te is!\n→ ${url}`,
+        `📻 Hallgatom a kampányt és bingózok 🎯\n${count}/24 – ki tudja mi hangzik el még!\n→ ${url} #ValasztasiBingo`,
+      ]
+    }
+    const textPool = isBingo ? shareTexts.bingo : shareTexts.playing
+    const shareText = textPool[Math.floor(Math.random() * textPool.length)]
+
+    // === CANVAS ALAPÚ GRID RAJZOLÁS ===
+    const COLS = 5
+    const CELL = 110
+    const GAP = 6
+    const PAD = 16
+    const HEADER = 90
+    const OUTER_PAD = 20
+
+    const gridW = COLS * CELL + (COLS - 1) * GAP + PAD * 2
+    const gridH = COLS * CELL + (COLS - 1) * GAP + PAD * 2
+    const totalW = gridW + OUTER_PAD * 2
+    const totalH = HEADER + gridH + 70 + OUTER_PAD * 2
+
+    const canvas = document.createElement('canvas')
+    canvas.width = totalW
+    canvas.height = totalH
+    const ctx = canvas.getContext('2d')
+
+    // 1. Háttér
+    ctx.fillStyle = '#f5f0eb'
+    ctx.fillRect(0, 0, totalW, totalH)
+
+    // 2. Magyar trikolór csík
+    const S = 7
+    ctx.fillStyle = '#CE2939'; ctx.fillRect(0, 0, totalW, S)
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, S, totalW, S)
+    ctx.fillStyle = '#477050'; ctx.fillRect(0, S * 2, totalW, S)
+
+    // 3. Fejléc
+    ctx.fillStyle = '#aa0424'
+    ctx.font = 'bold 22px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('VÁLASZTÁSI BINGÓ 2026', totalW / 2, S * 3 + 30)
+    ctx.font = '14px sans-serif'
+    ctx.fillStyle = '#888'
+    ctx.fillText('valasztasibingo.hu', totalW / 2, S * 3 + 52)
+
+    // 4. Grid háttér
+    const gx = OUTER_PAD
+    const gy = HEADER
+    ctx.fillStyle = '#e8e4e0'
+    ctx.beginPath()
+    ctx.roundRect(gx, gy, gridW, gridH, 16)
+    ctx.fill()
+
+    // 5. Cellák
+    board.forEach((word, i) => {
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const cx = gx + PAD + col * (CELL + GAP)
+      const cy = gy + PAD + row * (CELL + GAP)
+      const isCenter = i === CENTER
+      const isWin = winCells.has(i)
+      const isSel = selected.has(i)
+
+      ctx.fillStyle = isCenter ? 'rgba(170,4,36,0.10)' : isWin ? '#aa0424' : isSel ? '#c0eec6' : '#ffffff'
+      ctx.beginPath()
+      ctx.roundRect(cx, cy, CELL, CELL, 10)
+      ctx.fill()
+
+      if (isCenter) {
+        ctx.fillStyle = '#aa0424'
+        ctx.font = 'bold 13px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('FREE', cx + CELL / 2, cy + CELL / 2 + 5)
+      } else {
+        ctx.fillStyle = isWin ? '#ffffff' : isSel ? '#2d5a35' : '#1b1c1a'
+        ctx.textAlign = 'center'
+        const fontSize = 11
+        ctx.font = `${isWin ? 'bold ' : ''}${fontSize}px sans-serif`
+        const lines = wrapText(ctx, word, CELL - 12)
+        const lineH = fontSize + 3
+        const startY = cy + CELL / 2 - ((lines.length - 1) * lineH) / 2
+        lines.forEach((line, li) => ctx.fillText(line, cx + CELL / 2, startY + li * lineH))
+      }
+    })
+
+    // 6. Lábléc
+    const footerY = HEADER + gridH + OUTER_PAD + 16
+    ctx.fillStyle = isBingo ? '#aa0424' : '#555'
+    ctx.font = `bold ${isBingo ? 20 : 16}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(isBingo ? `🏆 BINGÓ! ${count}/24 mező` : `${count}/24 mező megjelölve`, totalW / 2, footerY)
+    ctx.fillStyle = '#999'
+    ctx.font = '13px sans-serif'
+    ctx.fillText('#ValasztasiBingo #valasztas2026', totalW / 2, footerY + 22)
+
+    // 7. Export
+    canvas.toBlob(async (blob) => {
+      const file = new File([blob], 'valasztasi-bingo-2026.png', { type: 'image/png' })
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: 'Választási Bingó 2026', text: shareText, files: [file] })
+        return
+      }
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = 'valasztasi-bingo-2026.png'
+      a.click()
+      URL.revokeObjectURL(a.href)
+      await navigator.clipboard?.writeText(shareText).catch(() => {})
+      setCopied(true)
+      setShareMsg('📥 Kép letöltve + szöveg másolva! Illeszd be közösségi médiába.')
+      setTimeout(() => { setCopied(false); setShareMsg('') }, 5000)
+    }, 'image/png')
   }
 
-  const fallback = (text) => {
-    const ta = document.createElement('textarea')
-    ta.value = text; document.body.appendChild(ta); ta.select()
-    try { document.execCommand('copy'); flash() } catch (e) {}
-    document.body.removeChild(ta)
+  if (phase === 'welcome') {
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        <TopBar title="Választási Bingó 2026" onLeftClick={onMenuClick} onRightClick={onProfileClick} />
+        <main className="flex-1 px-4 pt-6 pb-32 max-w-2xl mx-auto w-full space-y-6 slide-up">
+          {/* Hero card */}
+          <div className="relative rounded-3xl overflow-hidden shadow-lg" style={{ aspectRatio: '4/3' }}>
+            <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary-container to-stone-900" />
+            <div className="absolute inset-0 opacity-10" style={{
+              backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0l30 30-30 30L0 30z' fill='%23ffffff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E\")",
+              backgroundSize: '60px'
+            }} />
+            <div className="absolute bottom-0 left-0 p-8 text-on-primary">
+              <div className="flex items-center gap-2 mb-3">
+                <HungarianFlag size={24} />
+                <span className="text-xs font-headline font-bold uppercase tracking-widest opacity-80">Választási Bingó 2026</span>
+              </div>
+              <h2 className="text-3xl font-headline font-extrabold tracking-tight mb-2 leading-tight">
+                Fedezze fel a közéleti párbeszéd varázsszavait
+              </h2>
+              <p className="text-sm font-body opacity-80 max-w-xs leading-relaxed">
+                Hallgat egy vitát vagy kampánybeszédet? Kattintson a szóra, ha elhangzik!
+              </p>
+            </div>
+            {totalBingos > 0 && (
+              <div className="absolute top-4 right-4 bg-secondary-container text-on-secondary-container text-xs font-bold px-3 py-1 rounded-full font-headline">
+                {totalBingos} bingó ✓
+              </div>
+            )}
+          </div>
+
+          {/* Election countdown */}
+          <div className="bg-surface-container-lowest rounded-3xl p-5 border border-outline-variant/20 text-center shadow-sm">
+            <p className="text-[10px] font-headline font-extrabold uppercase tracking-[0.2em] text-on-surface-variant mb-3">
+              {countdown.done ? 'A szavazás lezárult' : 'Visszaszámláló – Választás 2026. április 12.'}
+            </p>
+            {countdown.done ? (
+              <p className="font-headline font-black text-4xl text-primary">Az urnák zárva</p>
+            ) : (
+              <p className="font-headline font-black text-5xl text-on-surface tabular-nums tracking-widest">
+                {String(countdown.totalHours).padStart(3, '0')}:{countdown.sub}
+              </p>
+            )}
+          </div>
+
+          {/* Feature cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <div
+              className="bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between h-36 cursor-pointer active:scale-95 transition-transform"
+              onClick={() => onNavigate('community')}
+            >
+              <span className="material-symbols-outlined text-secondary text-3xl">groups</span>
+              <div>
+                <h3 className="font-headline font-bold text-base leading-tight">Közösségi Játék</h3>
+                <p className="text-xs text-on-surface-variant mt-1">Játsszon barátaival élőben</p>
+              </div>
+            </div>
+            <div className="bg-surface-container-low p-5 rounded-2xl flex flex-col justify-between h-36">
+              <span className="material-symbols-outlined text-primary text-3xl">trending_up</span>
+              <div>
+                <h3 className="font-headline font-bold text-base leading-tight">Napi Statisztika</h3>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-xs text-on-surface-variant">
+                    <span className="font-bold text-on-surface">{stats.bingos}</span> bingó ma
+                  </span>
+                  <span className="text-xs text-on-surface-variant">
+                    <span className="font-bold text-on-surface">{stats.players}</span> játékos
+                  </span>
+                </div>
+                {stats.topWord !== '—' && (
+                  <p className="text-xs text-primary font-bold mt-0.5 truncate">🔥 {stats.topWord}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Varázsszavak */}
+          <div className="bg-surface-container-lowest rounded-2xl p-4 border border-outline-variant/20">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-headline font-bold uppercase tracking-widest text-on-surface-variant">
+                {showAllWords ? 'Összes varázsszó' : 'Néhány varázsszó'}
+              </p>
+              <span className="text-xs text-on-surface-variant font-body">{BUZZWORDS.length} szó</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(showAllWords ? BUZZWORDS : BUZZWORDS.slice(0, 8)).map(w => (
+                <span key={w} className="text-xs bg-surface-container text-on-surface-variant px-3 py-1 rounded-full font-body font-medium border border-outline-variant/30">
+                  {w}
+                </span>
+              ))}
+              {!showAllWords && (
+                <button
+                  onClick={() => setShowAllWords(true)}
+                  className="text-xs bg-primary-fixed text-on-primary-fixed-variant px-3 py-1 rounded-full font-body font-medium active:scale-95 transition-transform"
+                >
+                  +{BUZZWORDS.length - 8} más...
+                </button>
+              )}
+              {showAllWords && (
+                <button
+                  onClick={() => setShowAllWords(false)}
+                  className="text-xs bg-surface-container-high text-on-surface-variant px-3 py-1 rounded-full font-body font-medium active:scale-95 transition-transform"
+                >
+                  Kevesebb ↑
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Játék leírás */}
+          <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/20 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
+              <h3 className="font-headline font-bold text-base text-on-surface">Hogyan játssz?</h3>
+            </div>
+            <ol className="space-y-2">
+              {[
+                { n: '1', text: 'Indíts el egy bingó táblát és hallgasd a közvetítést vagy kampánybeszédet.' },
+                { n: '2', text: 'Ha elhangzik egy szó a táblán, kattints rá – a cella megjelölődik.' },
+                { n: '3', text: 'Ha egy teljes sort, oszlopot vagy átlót bejelöltél: BINGÓ!' },
+                { n: '4', text: 'Oszd meg az eredményed és versenyezz a közösséggel a ranglistán.' },
+              ].map(item => (
+                <li key={item.n} className="flex gap-3 items-start">
+                  <span className="w-5 h-5 rounded-full bg-primary text-on-primary text-[10px] font-black flex items-center justify-center flex-shrink-0 mt-0.5">{item.n}</span>
+                  <p className="text-sm font-body text-on-surface-variant leading-snug">{item.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={startGame}
+            className="w-full bg-primary text-on-primary py-4 rounded-2xl font-headline font-bold text-lg shadow-lg shadow-primary/20 active:scale-95 transition-transform flex items-center justify-center gap-2"
+          >
+            Játék Indítása
+            <span className="material-symbols-outlined">play_arrow</span>
+          </button>
+          <LegalFooter />
+        </main>
+      </div>
+    )
   }
 
-  const flash = () => { setCopied(true); setTimeout(() => setCopied(false), 2500) }
+  // Game screen
   const count = selected.size - 1
-
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '1rem' }}>
-      {/* Bingo banner */}
-      <div style={{
-        overflow: 'hidden',
-        maxHeight: isBingo ? 80 : 0,
-        transition: 'max-height 0.4s ease',
-        marginBottom: isBingo ? 12 : 0,
-      }}>
-        <div style={{
-          background: 'white', border: '2px solid #CE2939', borderRadius: 12,
-          padding: '10px 16px', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', gap: 10,
-        }}>
-          <span style={{ fontSize: 20 }}>🏆</span>
-          <span style={{ fontSize: 17, fontWeight: 700, color: '#CE2939', letterSpacing: 1 }}>BINGÓ! Megvan a sor!</span>
-          <span style={{ fontSize: 20 }}>🏆</span>
+    <div className="flex flex-col min-h-screen bg-background">
+      <TopBar title="Választási Bingó 2026" onLeftClick={onMenuClick} onRightClick={onProfileClick} />
+      <main className="flex-1 px-4 pt-4 pb-32 max-w-2xl mx-auto w-full space-y-4 slide-up">
+
+        {/* Game header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-headline font-bold text-on-surface">Élő Közvetítés</h2>
+            <p className="text-xs text-on-surface-variant mt-0.5">Kattintson az elhangzott szavakra!</p>
+          </div>
+          <div className="flex items-center gap-1 bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-xs font-headline font-bold">
+            <span className="w-2 h-2 bg-secondary rounded-full animate-pulse-dot" />
+            AKTÍV
+          </div>
         </div>
-      </div>
 
-      {/* Grid */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-        gap: 4, background: '#E5E7EB', padding: 6, borderRadius: 16, border: '1px solid #D1D5DB',
-      }}>
-        {board.map((word, i) => {
-          const isCenter = i === CENTER
-          const isWin = winCells.has(i)
-          const isSel = selected.has(i)
-          let bg = 'white', color = '#374151', border = '1px solid #E5E7EB'
-          if (isCenter) { bg = '#477050'; color = 'white'; border = '1px solid #2F4D37' }
-          else if (isWin) { bg = '#CE2939'; color = 'white'; border = '1px solid #A01F2C' }
-          else if (isSel) { bg = '#477050'; color = 'white'; border = '1px solid #2F4D37' }
-          return (
-            <button key={i} onClick={() => toggleCell(i)} style={{
-              aspectRatio: '1', background: bg, color, border, borderRadius: 8,
-              fontSize: 9, fontWeight: 600, padding: '4px 3px',
-              cursor: isCenter ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              textAlign: 'center', lineHeight: 1.3, transition: 'all 0.12s',
-              transform: isSel && !isCenter ? 'scale(0.95)' : 'scale(1)',
-              userSelect: 'none', whiteSpace: 'pre-wrap', wordBreak: 'break-word', hyphens: 'auto',
-            }}>
-              {word}
-            </button>
-          )
-        })}
-      </div>
+        {/* Bingo banner */}
+        {isBingo && (
+          <div className="slide-up bg-surface-container-lowest border-2 border-primary rounded-2xl p-3 flex items-center justify-center gap-3 shadow-md">
+            <span className="material-symbols-outlined text-2xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+            <span className="font-headline font-black text-lg text-primary uppercase tracking-wide">BINGÓ! Megvan a sor!</span>
+            <span className="material-symbols-outlined text-2xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+          </div>
+        )}
 
-      <p style={{ textAlign: 'center', marginTop: 10, fontSize: 12, color: '#6B7280' }}>
-        {count} / {SIZE * SIZE - 1} mező megjelölve
-      </p>
-
-      {/* Controls */}
-      <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-        <button onClick={generateBoard} style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          padding: '12px 10px', background: 'white', color: '#374151',
-          border: '1px solid #D1D5DB', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-        }}>
-          <RotateCcw size={15} /> Új tábla
-        </button>
-        <button onClick={handleShare} style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          padding: '12px 10px', background: copied ? '#477050' : '#CE2939',
-          color: 'white', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 600,
-          cursor: 'pointer', transition: 'background 0.2s',
-        }}>
-          {copied ? <><Check size={15} /> Másolva!</> : <><Share2 size={15} /> Megosztás</>}
-        </button>
-      </div>
-
-      {/* Word list */}
-      <details style={{
-        marginTop: 14, background: 'white', border: '1px solid #E5E7EB',
-        borderRadius: 10, padding: '10px 12px',
-      }}>
-        <summary style={{ fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
-          Mind a 34 varázsszó
-        </summary>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
-          {BUZZWORDS.map(w => (
-            <span key={w} style={{
-              fontSize: 10, background: '#F3F4F6', border: '1px solid #E5E7EB',
-              borderRadius: 20, padding: '2px 8px', color: '#6B7280',
-            }}>{w}</span>
-          ))}
+        {/* Progress bar */}
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-on-surface-variant font-body">
+            <span className="font-bold text-on-surface">{count}</span> / {SIZE * SIZE - 1} mező
+          </span>
+          <div className="h-1.5 flex-1 mx-3 bg-surface-container-high rounded-full overflow-hidden">
+            <div
+              className="h-full bg-secondary rounded-full transition-all duration-300"
+              style={{ width: `${(count / (SIZE * SIZE - 1)) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs font-headline font-bold text-secondary">{Math.round((count / (SIZE * SIZE - 1)) * 100)}%</span>
         </div>
-      </details>
+
+        {/* Bingo Grid */}
+        <div
+          id="bingo-grid"
+          className="rounded-3xl overflow-hidden"
+          style={{
+            background: 'linear-gradient(145deg, #eae8e5, #efeeeb)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.15)',
+            padding: '10px',
+          }}
+        >
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${SIZE}, minmax(0, 1fr))` }}>
+            {board.map((word, i) => {
+              const isCenter = i === CENTER
+              const isWin = winCells.has(i)
+              const isSel = selected.has(i)
+
+              const baseStyle = {
+                borderRadius: '12px',
+                transition: 'all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                userSelect: 'none',
+              }
+              const raisedStyle = {
+                background: 'linear-gradient(160deg, #ffffff 0%, #f8f6f3 100%)',
+                boxShadow: '0 4px 0 rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.8)',
+                transform: 'translateY(-1px)',
+                border: '1px solid rgba(0,0,0,0.06)',
+              }
+              const pressedStyle = {
+                background: 'linear-gradient(160deg, #c0eec6 0%, #a5d1ab 100%)',
+                boxShadow: '0 1px 0 rgba(0,0,0,0.10), inset 0 2px 4px rgba(0,0,0,0.10)',
+                transform: 'translateY(1px)',
+                border: '1px solid rgba(0,0,0,0.04)',
+              }
+              const winStyle = {
+                background: 'linear-gradient(135deg, #aa0424 0%, #7a0019 100%)',
+                boxShadow: '0 4px 0 rgba(170,4,36,0.35), 0 0 20px rgba(170,4,36,0.25), inset 0 1px 0 rgba(255,255,255,0.2)',
+                transform: 'translateY(-2px) scale(1.03)',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }
+              const centerStyle = {
+                background: 'linear-gradient(135deg, rgba(170,4,36,0.12) 0%, rgba(170,4,36,0.06) 100%)',
+                boxShadow: '0 2px 0 rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+                border: '2px solid rgba(170,4,36,0.2)',
+              }
+
+              const cellStyle = isCenter ? centerStyle : isWin ? winStyle : isSel ? pressedStyle : raisedStyle
+
+              return (
+                <button
+                  key={i}
+                  onClick={() => toggleCell(i)}
+                  className={`aspect-square flex flex-col items-center justify-center p-1 text-center active:scale-95 ${isCenter ? 'cursor-default' : 'cursor-pointer'} ${isWin ? 'bingo-pop' : ''}`}
+                  style={{ ...baseStyle, ...cellStyle }}
+                >
+                  {isCenter ? (
+                    <>
+                      <span className="material-symbols-outlined text-primary text-xl mb-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>how_to_vote</span>
+                      <span className="text-[7px] font-black uppercase tracking-widest text-primary leading-none">FREE</span>
+                    </>
+                  ) : (
+                    <span
+                      className="leading-tight break-words w-full"
+                      style={{
+                        fontSize: 'clamp(7px, 1.9vw, 10px)',
+                        fontFamily: '"Plus Jakarta Sans", sans-serif',
+                        fontWeight: isWin ? 800 : isSel ? 700 : 600,
+                        textAlign: 'center',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 4,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        color: isWin ? '#ffffff' : isSel ? '#446d4e' : '#1b1c1a',
+                        textShadow: isWin ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      {word}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleShare}
+            className={`flex-1 py-3.5 rounded-xl font-headline font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm ${copied ? 'bg-secondary text-on-secondary' : 'bg-primary text-on-primary'}`}
+          >
+            <span className="material-symbols-outlined text-base">{copied ? 'download_done' : 'share'}</span>
+            {copied ? 'Letöltve + Másolva!' : 'Megosztás'}
+          </button>
+          <button onClick={newBoard} className="py-3.5 px-4 bg-surface-container-high rounded-xl text-on-surface active:scale-95 transition-transform">
+            <span className="material-symbols-outlined">refresh</span>
+          </button>
+          <button onClick={() => setPhase('welcome')} className="py-3.5 px-4 bg-surface-container-high rounded-xl text-on-surface active:scale-95 transition-transform">
+            <span className="material-symbols-outlined">home</span>
+          </button>
+        </div>
+
+        {/* Related news */}
+        <div className="bg-surface-container p-4 rounded-2xl flex gap-4 items-center border border-outline-variant/10">
+          <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-primary">newspaper</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-headline font-bold text-primary uppercase tracking-widest mb-0.5">Kapcsolódó</p>
+            <h4 className="font-headline font-bold text-sm leading-snug truncate">Újabb konzultáció indul jövő héten</h4>
+            <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">A részletek már elérhetők a hivatalos oldalakon...</p>
+          </div>
+        </div>
+        <LegalFooter />
+      </main>
+
+      {shareMsg && (
+        <div className="fixed bottom-32 left-4 right-4 z-50 bg-on-surface text-surface text-sm font-headline font-bold px-5 py-3 rounded-2xl shadow-lg text-center">
+          {shareMsg}
+        </div>
+      )}
     </div>
   )
 }
